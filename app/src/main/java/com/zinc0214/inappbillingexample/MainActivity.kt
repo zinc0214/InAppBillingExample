@@ -14,6 +14,14 @@ class MainActivity : AppCompatActivity() {
     private lateinit var billingClient: BillingClient
     private lateinit var skuDetails: ArrayList<SkuDetails>
 
+    /**
+     * 구매 가능한 리스트의 아이템을 추가한다
+     * Google PlayConsole 의 상품Id 와 동일하게 적어준다.
+     *
+     * always_item : 중복해서 무제한으로 살 수 있는 아이템
+     * once_item : 1번만 살 수 있는 아이템
+     */
+    private val purchasableList = listOf("always_item", "bb")
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -28,32 +36,28 @@ class MainActivity : AppCompatActivity() {
     private fun initBillingClient() {
         billingClient =
             BillingClient.newBuilder(this@MainActivity).enablePendingPurchases()
-                .setListener(object : PurchasesUpdatedListener {
+                .setListener { billingResult, purchases ->
+
                     /**
                      * 구매 방식에 대해 처리한다. item 의 id 에 따라서
                      * purchaseAlways 또는 purchaseOnce 로 보낸다.
                      * (바텀에 결제 화면이 뜬 시점)
                      */
-                    override fun onPurchasesUpdated(
-                        billingResult: BillingResult,
-                        purchases: List<Purchase>?
-                    ) {
-                        if (billingResult.responseCode == BillingClient.BillingResponseCode.OK && purchases != null) {
-                            for (purchase in purchases) {
-                                val isAlwaysItem = purchase.skus.firstOrNull { it == "always_item" }
-                                if (isAlwaysItem != null) {
-                                    purchaseAlwaysItem(purchase)
-                                } else {
-                                    purchaseOnceItem(purchase)
-                                }
+                    if (billingResult.responseCode == BillingClient.BillingResponseCode.OK && purchases != null) {
+                        for (purchase in purchases) {
+                            val isAlwaysItem = purchase.skus.firstOrNull { it == "always_item" }
+                            if (isAlwaysItem != null) {
+                                purchaseAlwaysItem(purchase)
+                            } else {
+                                purchaseOnceItem(purchase)
                             }
-                        } else if (billingResult.responseCode == BillingClient.BillingResponseCode.USER_CANCELED) {
-                            "상품 주문이 취소되었습니다".showToast()
-                        } else {
-                            "구매요청이 실패했습니다 ;ㅁ; ${billingResult.responseCode}".showToast()
                         }
+                    } else if (billingResult.responseCode == BillingClient.BillingResponseCode.USER_CANCELED) {
+                        "상품 주문이 취소되었습니다".showToast()
+                    } else {
+                        "구매요청이 실패했습니다 ;ㅁ; ${billingResult.responseCode}".showToast()
                     }
-                })
+                }
                 .build()
     }
 
@@ -75,11 +79,9 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun querySkuDetails() {
-        val purchasableList = getPurchasableList()
         val params = SkuDetailsParams.newBuilder()
         params.setSkusList(purchasableList).setType(BillingClient.SkuType.INAPP)
         billingClient.querySkuDetailsAsync(params.build()) { result, skuDetails ->
-            Log.e("ayhan", "result ; $result \n skeDetails ; $skuDetails")
             if (result.responseCode == BillingClient.BillingResponseCode.OK) {
                 if (skuDetails.isNullOrEmpty() || skuDetails.size != purchasableList.size) {
                     "앗 실패했다 ;ㅁ; 아이템 아이디가 확실한가요??".showToast()
@@ -91,17 +93,6 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
-
-    /**
-     * 구매 가능한 리스트의 아이템을 추가한다
-     * Google PlayConsole 의 상품Id 와 동일하게 적어준다.
-     */
-    private fun getPurchasableList() = ArrayList<String>().apply {
-        add("always_item") // 중복해서 무제한으로 살 수 있는 아이템
-        add("once_item_a") // 1번만 살 수 있는 아이템
-
-    }
-
 
     private fun setUpViews() {
         binding.buyAlwaysButton.setOnClickListener { purchaseItem(0) }
@@ -149,30 +140,22 @@ class MainActivity : AppCompatActivity() {
      */
     fun getAcknowledgePurchasedItem() {
         billingClient.queryPurchasesAsync(
-            BillingClient.SkuType.INAPP,
-            object : PurchasesResponseListener {
-                override fun onQueryPurchasesResponse(
-                    result: BillingResult,
-                    pusrchases: MutableList<Purchase>
-                ) {
-                    if (pusrchases.isNullOrEmpty()) {
-                        Log.d("TAG", "No existing in app purchases found.")
-                    } else {
-                        Log.e("ayhan", "pusrchases ::: $pusrchases")
-                        pusrchases.forEach { acknowledgePurchase ->
-                            Log.e("ayhan", "acknowledgePurchase ::: ${acknowledgePurchase.skus}")
-                            getPurchasableList().forEach { itemId ->
-                                val isPurchasedId =
-                                    acknowledgePurchase.skus.firstOrNull { it == itemId }
-                                if (isPurchasedId != null) {
-                                    binding.buyOnceButton.text = "YOU ALREADY BOUGHT...!"
-                                    binding.buyOnceButton.isEnabled = false
-                                }
-                            }
+            BillingClient.SkuType.INAPP
+        ) { result, pusrchases ->
+            if (pusrchases.isNullOrEmpty()) {
+                Log.d("TAG", "No existing in app purchases found.")
+            } else {
+                pusrchases.forEach { acknowledgePurchase ->
+                    purchasableList.forEach { itemId ->
+                        val isPurchasedId = acknowledgePurchase.skus.firstOrNull { it == itemId }
+                        if (isPurchasedId != null) {
+                            binding.buyOnceButton.text = "YOU ALREADY BOUGHT...!"
+                            binding.buyOnceButton.isEnabled = false
                         }
                     }
                 }
-            })
+            }
+        }
     }
 
 
@@ -204,6 +187,9 @@ class MainActivity : AppCompatActivity() {
             ConsumeParams.newBuilder().setPurchaseToken(purchase.purchaseToken).build()
 
         billingClient.consumeAsync(consumeParams) { billingResult, _ ->
+            Log.e("ayhan : billingReulst", "$billingResult")
+            "${billingResult.responseCode} 121212".showToast()
+            binding.buyAlwaysButton.text = "121212"
             if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
                 "감사합니다! 사,사,사는동안 많이버세요!".showToast()
             } else {
@@ -214,15 +200,11 @@ class MainActivity : AppCompatActivity() {
 
     // 일회성 제품 구매시
     private fun purchaseOnceItem(purchase: Purchase) {
-
-        //Log.e("ayhan", "${purchase.purchaseState} , ${purchase.isAcknowledged}")
-
         if (purchase.purchaseState == Purchase.PurchaseState.PURCHASED) {
             if (!purchase.isAcknowledged) {
-                val params =
-                    AcknowledgePurchaseParams.newBuilder().setPurchaseToken(purchase.purchaseToken)
-                        .build()
+                val params = AcknowledgePurchaseParams.newBuilder().setPurchaseToken(purchase.purchaseToken).build()
                 billingClient.acknowledgePurchase(params) { billingResult ->
+                    "${billingResult.responseCode}".showToast()
                     if (billingResult.responseCode == BillingClient.BillingResponseCode.OK) {
                         "감사합니다! 사,사,사는동안 많이버세요!".showToast()
                         queryPurchaseHistoryAsync()

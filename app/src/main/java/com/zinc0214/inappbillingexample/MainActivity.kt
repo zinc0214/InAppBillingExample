@@ -6,7 +6,6 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.databinding.DataBindingUtil
 import com.android.billingclient.api.AcknowledgePurchaseParams
-import com.android.billingclient.api.AcknowledgePurchaseResponseListener
 import com.android.billingclient.api.BillingClient
 import com.android.billingclient.api.BillingClientStateListener
 import com.android.billingclient.api.BillingFlowParams
@@ -15,8 +14,6 @@ import com.android.billingclient.api.ConsumeParams
 import com.android.billingclient.api.ConsumeResponseListener
 import com.android.billingclient.api.ProductDetails
 import com.android.billingclient.api.Purchase
-import com.android.billingclient.api.PurchaseHistoryRecord
-import com.android.billingclient.api.PurchaseHistoryResponseListener
 import com.android.billingclient.api.PurchasesUpdatedListener
 import com.android.billingclient.api.QueryProductDetailsParams
 import com.android.billingclient.api.QueryPurchaseHistoryParams
@@ -124,7 +121,7 @@ class MainActivity : AppCompatActivity() {
         })
     }
 
-    // 6.0 not ktx
+    // 6.0 기본
     private fun queryProductDetails2() {
         val params = QueryProductDetailsParams.newBuilder()
         params.setProductList(productList).build()
@@ -190,18 +187,11 @@ class MainActivity : AppCompatActivity() {
         val params = QueryPurchaseHistoryParams.newBuilder()
             .setProductType(BillingClient.ProductType.INAPP)
 
-        billingClient.queryPurchaseHistoryAsync(
-            params.build(),
-            object : PurchaseHistoryResponseListener {
-                override fun onPurchaseHistoryResponse(
-                    result: BillingResult,
-                    purchaseRecord: MutableList<PurchaseHistoryRecord>?
-                ) {
-                    if (result.responseCode == BillingClient.BillingResponseCode.OK) {
-                        // Do Something!
-                    }
-                }
-            })
+        billingClient.queryPurchaseHistoryAsync(params.build()) { result, purchaseRecord ->
+            if (result.responseCode == BillingClient.BillingResponseCode.OK) {
+                // Do Something
+            }
+        }
     }
 
     /**
@@ -295,28 +285,25 @@ class MainActivity : AppCompatActivity() {
         val acknowledgePurchaseParams = AcknowledgePurchaseParams.newBuilder()
             .setPurchaseToken(purchase.purchaseToken).build()
 
-        billingClient.acknowledgePurchase(
-            acknowledgePurchaseParams, object : AcknowledgePurchaseResponseListener {
-                override fun onAcknowledgePurchaseResponse(result: BillingResult) {
-                    if (result.responseCode == BillingClient.BillingResponseCode.OK &&
-                        purchase.purchaseState == Purchase.PurchaseState.PURCHASED &&
-                        !purchase.isAcknowledged
-                    ) {
-                        CoroutineScope(Dispatchers.Main).launch {
-                            val ackPurchaseResult =
-                                billingClient.acknowledgePurchase(acknowledgePurchaseParams)
+        billingClient.acknowledgePurchase(acknowledgePurchaseParams) { result ->
+            if (result.responseCode == BillingClient.BillingResponseCode.OK &&
+                purchase.purchaseState == Purchase.PurchaseState.PURCHASED &&
+                !purchase.isAcknowledged
+            ) {
+                CoroutineScope(Dispatchers.Main).launch {
+                    val ackPurchaseResult =
+                        billingClient.acknowledgePurchase(acknowledgePurchaseParams)
 
-                            if (ackPurchaseResult.responseCode == BillingClient.BillingResponseCode.OK) {
-                                "감사합니다! 상품은 소비되었으며 더 이상 구매할 수 없습니당!".showToast()
-                                queryPurchaseAsync()
+                    if (ackPurchaseResult.responseCode == BillingClient.BillingResponseCode.OK) {
+                        "감사합니다! 상품은 소비되었으며 더 이상 구매할 수 없습니당!".showToast()
+                        queryPurchaseAsync()
 
-                            } else {
-                                "구매요청이 실패했습니다 ;ㅁ; ${ackPurchaseResult.responseCode}".showToast()
-                            }
-                        }
+                    } else {
+                        "구매요청이 실패했습니다 ;ㅁ; ${ackPurchaseResult.responseCode}".showToast()
                     }
                 }
-            })
+            }
+        }
     }
 
     private fun String.showToast() {
